@@ -1,0 +1,251 @@
+{% extends 'ik-wil-helpen/base-wide.html' %}
+{% load humanize i18n postman_tags crispy_forms_tags caire %}
+{% load static from staticfiles %}
+{% load compress %}
+
+{% block og_tags %}
+    <meta property="og:title" content="{{ caire_request.summary }}"/>
+    <meta property="og:site_name" content="WeHelpen"/>
+    <meta property="og:url" content="https://
+            {{ current_site.domain }}{% url 'hulpvraag-detail' caire_request.pk %}"/>
+    <meta property="og:description" content="{{ caire_request.detail }}"/>
+    <meta property="og:image"
+          content="{% static 'gfx/logos/WH_beeldmerk.jpg' %}"/>
+    <meta property="og:type" content="website"/>
+    <meta property="og:locale" content="nl_NL"/>
+    <meta property="fb:app_id" content="{{ settings.FACEBOOK_APP_ID }}"/>
+{% endblock og_tags %}
+
+{% block title %}{% if user == caire_request.creator %}Je Hulpvraag{% else %}
+    Hulp aanbieden bij deze vraag{% endif %}{% endblock %}
+{% block html_title %}
+    {{ caire_request.summary|truncatewords:5|truncatechars:100 }} - Hulpvraag -
+    {{ block.super }}{% endblock %}
+
+{% block page_class %}hulpvragen {{ block.super }}{% endblock %}
+
+{% block submenu_hulpvraag-lijst %}selected{% endblock %}
+
+{% block tile_nav %}
+    {% with province=province|default:last_location.province city=city|default:last_location.city municipality=municipality|default:last_location.municipality postal_code=postal_code|default:last_location.postal_code %}
+        {% if current_site.is_whitelabel %}
+            {% url 'hulpvraag-lijst' as requests_url %}
+            <a href="{{ requests_url }}"><span class="arrow else">◂ </span>
+                <span>Bekijk alle hulpvragen binnen {{ current_site.display_name }}</span>
+            </a>
+        {% elif postal_code %}
+            {% url 'caire_requests_by_location' postal_code.code as requests_url %}
+            <a href="{{ requests_url }}"
+               title="Bekijk hulpvragen in {{ postal_code }}"><span
+                    class="arrow postal_code">◂ </span>Bekijk hulpvragen
+                in {{ postal_code }}</a>
+        {% elif city %}
+            {% caire_city_url 'caire_requests_by_city' city as requests_url %}
+            <a href="{{ requests_url }}"
+               title="Bekijk hulpvragen in {{ city.unique_name }}"><span
+                    class="arrow city">◂ </span>Bekijk hulpvragen
+                in {{ city.unique_name }}</a>
+        {% elif municipality %}
+            {% url 'caire_requests_by_municipality' municipality.name as requests_url %}
+            <a href="{{ requests_url }}"
+               title="Bekijk hulpvragen in {{ municipality.name }}"><span
+                    class="arrow city">◂ </span>Bekijk hulpvragen
+                in gemeente {{ municipality.name }}</a>
+        {% elif province %}
+            {% url 'caire_requests_by_province' province as requests_url %}
+            <a href="{{ requests_url }}" title="Bekijk hulpvragen in provincie {{ last_location.province_display }}">
+                <span class="arrow province">◂ </span>
+                Bekijk hulpvragen in provincie {{ last_location.province_display }}</a>
+        {% else %}
+            {% url 'hulpvraag-lijst' as requests_url %}
+            <a href="{{ requests_url }}"><span class="arrow else"
+                                               title="Bekijk alle hulpvragen">◂ </span>
+                Bekijk alle hulpvragen</a>
+        {% endif %}
+    {% endwith %}
+{% endblock tile_nav %}
+
+{% block page_title %}
+    <h1>{{ caire_request.summary }}</h1>
+{% endblock %}
+
+
+{% block javascript_extra %}
+    {% compress js %}
+        <script type="text/javascript"
+                src="{% static 'js/jquery.autosize.js' %}"/>
+        <script type="text/javascript"
+                src="{% static 'js/ik-wil-helpen/comment-form.js' %}"/>
+        <script src="{% static 'js/ajax-dialog.js' %}"></script>
+        <script src="{% static 'js/maps/map-simple.js' %}"></script>
+        <script>
+                jQuery(document).ready(function ($) {
+                    var addthisScript = document.createElement('script');
+                    addthisScript.setAttribute('src', '//s7.addthis.com/js/300/addthis_widget.js#pubid=ra-51efcf68669f7da4&domready=1');
+                    document.body.appendChild(addthisScript);
+                });
+        </script>
+    {% endcompress %}
+    {% if caire_request.location.postal_area %}
+        <script>
+
+            jQuery(document).ready(function ($) {
+                var wh_map = wh.map({
+                    container: $('#map-tile'),
+                    api_key: '{{ GOOGLE_API_BROWSER_KEY|default_if_none:"" }}',
+                    lat: '{{ caire_request.location.postal_area.lat|safe }}',
+                    lng: '{{ caire_request.location.postal_area.lng|safe }}',
+                    marker: '{% static 'gfx/markers/marker-request.png' %}'
+                });
+
+            });
+        </script>
+    {% endif %}
+{% endblock %}
+
+{% block filter %}{#
+     TODO: share between mijn-hulpvraag.html and hulpvraag_detail.html #}
+    {% if user == caire_request.creator %}
+        <ul id="filter_form" class="fullwidth">
+            <li><a class="button wide grey"
+                   href="{% url 'hulpvraag-kopieren' caire_request.id %}">Hulpvraag
+                kopiëren</a></li>
+            {% if not caire_request.is_closed and not caire_request.is_cancelled %}
+                <li><a class="button wide grey"
+                       href="{% url 'hulpvraag-aanpassen' caire_request.id %}">Hulpvraag
+                    bewerken</a></li>
+                <li style="float:right;">
+                    <a class="button wide grey ajax-dialog"
+                       href="{% url 'hulpvraag-afsluiten' caire_request.id %}"
+                       title="Hulpvraag afsluiten">Hulpvraag afsluiten</a>
+                </li>
+            {% endif %}
+        </ul>
+    {% endif %}
+{% endblock %}
+
+{% block page_content %}
+    {% with profile=caire_request.creator.caire_profile location=caire_request.location %}
+        {% url 'hulp-profiel-detail' profile.user.username as profile_url %}
+        {% include 'ik-wil-helpen/includes/hulpvraag-detail_snippet' with profile_url=profile_url %}
+    {% endwith %}
+
+    {% if user.is_authenticated %}
+        {% if user != caire_request.creator %}
+            {% if caire_request.is_closed or caire_request.is_cancelled %}
+                {# TODO: sync/reuse mijn-wehelpen/hulpvragen/includes/afgesloten-hulpvraag.html #}
+                <section
+                        class="withbackground dark center nobordertop borderbottom">
+                    <header><h1>Deze hulpvraag is afgesloten.</h1></header>
+                </section>
+                {% comment %}{% elif caire_request.is_expired %}
+                   <section class="withbackground dark center nobordertop borderbottom">
+                    <header><h1>Deze hulpvraag is verlopen.</h1></header>
+                </section>{% endcomment %}
+                {% if user in caire_request.all_assigned_users %}
+                    {% url 'hulpvraag-bericht' caire_request.id as action_url%}
+                    {% include "includes/reacties/reacties-lijst.html" with profile=caire_request.creator.caire_profile comments=comments action_url=action_url%}
+                {% endif %}
+
+            {% else %}
+                {% include 'ik-wil-helpen/hulpvraag_assignment.html' %}
+            {% endif %}
+        {% endif %}
+
+        {% with nr_public_comments=caire_request.comments.count %}
+            {% if nr_public_comments > 0 %}
+                <section class="withbackground nobordertop">
+                    <a href="{% url 'hulpvraag-reacties-publiek' caire_request=caire_request.id %}">
+                        {% if nr_public_comments > 0 %}{{ nr_public_comments }}
+                            publieke reactie
+                            {{ nr_public_comments|pluralize }}{% else %}Publieke
+                            reacties{% endif %}
+                    </a>
+                </section>
+            {% endif %}
+        {% endwith %}
+        {% if caire_request.is_open %}
+            <section class="social">
+                <div>
+                    <div class="gridcontainer">
+                        {% if caire_request.is_open %}
+                            <div class="sm-12 md-6 lg-3">
+                                {% if user.is_authenticated and caire_request.creator != user %}
+
+                                    {% include 'ik-wil-helpen/includes/hulpvraag-volgen_snippet.html' %}
+                                {% else %}
+                                    &#160;{# dummy content, to fix layout #}
+                                {% endif %}
+                            </div>
+                            {% if caire_request.is_public %}
+                                <div class="sm-12 md-6 lg-3 lg-shift-6">
+                                    <h3 class="smaller">Deel deze hulpvraag
+                                        <br/>met je vrienden!</h3>
+                                    {% include 'ik-wil-helpen/includes/hulpvraag-addthis_snippet.html' %}
+                                </div>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+        {% endif %}
+    {% else %} {# not user.is_authenticated #}
+        <section class="withbackground center dark">
+            <h3>Om je hulp aan te bieden of reacties te bekijken moet je
+                inloggen.</h3>
+            {% include  'includes/signup-login/aanmeldbutton.html' with entrance='hulpvraag-lijst' %}
+        </section>
+    {% endif %}
+
+    {% if user.is_authenticated and user != member %}
+        <section class="misbruik hulpvraag nobordertop borderbottom">
+
+            <a class="open-dialog"
+               href="{% url 'meld-misbruik' %}">
+            Meld deze hulpvraag bij WeHelpen <i class="fa fa-caret-down"></i>
+            </a>
+
+            <div class="confirm-close-dialog"
+                 style="display: none;"
+                 title="Meld deze hulpvraag bij WeHelpen"
+                 data-width="600">
+
+                <form class="uniForm withbackground"
+                      action="{% url 'meld-misbruik' %}"
+                      method="post"
+                      id="caire_contact_form"
+                      data-language="{{ lang.code }}">
+
+                        <p class="nomargintop">
+                            Wil je WeHelpen op de hoogte brengen van ongepaste reacties of misbruik? Dan kan dat door onderstaand
+                            formulier in te vullen. Het formulier wordt alleen gelezen door een WeHelpen medewerker. We beloven dat
+                            we vertrouwelijk en zorgvuldig met je melding omgaan.
+                            Waar nodig zullen we je per e-mail om aanvullende informatie
+                            vragen of je op de hoogte houden van verdere ontwikkelingen.
+                        </p>
+                        {% csrf_token %}
+                        <input type="hidden" name="url" value="{{ request.build_absolute_uri }}">
+                        {{ abuse_form|crispy }}
+
+                    <div class="buttonHolder">
+                        <input type="submit" class="primaryAction"
+                               value="{% trans 'verzenden'|capfirst %}"/></div>
+                </form>
+
+            </div>
+
+            </section>
+    {% endif %}
+
+{% endblock page_content %}
+
+{% block extra_right_tile %}
+
+    {% if caire_request.location.postal_area %}
+        <div class="tile" id="map-tile"></div>
+    {% endif %}
+{% endblock extra_right_tile %}
+
+
+
+
